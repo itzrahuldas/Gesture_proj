@@ -1,105 +1,97 @@
 import cv2
 import os
 import logging
-from datetime import datetime
 
 # Configure logging
-logging.basicConfig(
-    filename='data_collection.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
-# Define gesture labels and their corresponding keys
-GESTURE_MAP = {
-    ord('0'): 'fist',
-    ord('1'): 'palm',
-    ord('2'): 'thumbs_up',
-    ord('3'): 'thumbs_down',
-    ord('4'): 'peace'
-}
-
-# Image setting
-IMG_SIZE = 224
+# Constants
+DATA_DIR = 'data'
+IMG_SIZE = 128
+CLASSES = ['fist', 'palm', 'thumbs_up', 'none']
 
 def create_dirs():
-    """Create directories for each gesture if they don't exist."""
-    base_dir = "dataset"
-    if not os.path.exists(base_dir):
-        os.makedirs(base_dir)
-        logging.info(f"Created base directory: {base_dir}")
-
-    for key in GESTURE_MAP:
-        folder_name = GESTURE_MAP[key]
-        path = os.path.join(base_dir, folder_name)
+    """Create dataset directories."""
+    if not os.path.exists(DATA_DIR):
+        os.makedirs(DATA_DIR)
+    
+    for class_name in CLASSES:
+        path = os.path.join(DATA_DIR, class_name)
         if not os.path.exists(path):
             os.makedirs(path)
-            logging.info(f"Created directory: {path}")
 
-def collect_data():
-    """Main function to capture video and save images."""
+def get_counts():
+    """Get current image counts for each class."""
+    counts = {}
+    for class_name in CLASSES:
+        path = os.path.join(DATA_DIR, class_name)
+        # Count files
+        if os.path.exists(path):
+            counts[class_name] = len([f for f in os.listdir(path) if f.endswith('.jpg') or f.endswith('.png')])
+        else:
+            counts[class_name] = 0
+    return counts
+
+def main():
     create_dirs()
-    
     cap = cv2.VideoCapture(0)
+    
     if not cap.isOpened():
-        logging.error("Could not open webcam.")
         print("Error: Could not open webcam.")
         return
 
-    logging.info("Started data collection session.")
     print("Starting data collection...")
-    print("Press 0-4 to save images to corresponding folders.")
+    print("Press 'f' for Fist, 'p' for Palm, 't' for Thumbs Up, 'n' for None.")
     print("Press 'q' to quit.")
-    print(f"Mappings: {str({chr(k): v for k, v in GESTURE_MAP.items()})}")
 
     while True:
         ret, frame = cap.read()
         if not ret:
-            logging.error("Failed to capture frame.")
-            print("Error: Failed to capture frame.")
+            print("Failed to capture frame.")
             break
 
-        # Processing for display (keep aspect ratio or just showing raw?)
-        # For saving, we need 224x224 grayscale.
+        # Copy frame for display
+        display_frame = frame.copy()
         
-        # Display the frame
-        cv2.imshow('Gesture Data Collection', frame)
+        # Get counts for overlay
+        counts = get_counts()
+        
+        # Overlay counts
+        y_offset = 30
+        for i, class_name in enumerate(CLASSES):
+            text = f"{class_name}: {counts[class_name]}"
+            cv2.putText(display_frame, text, (10, y_offset + (i * 30)), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+        cv2.imshow('Data Collection', display_frame)
 
         key = cv2.waitKey(1) & 0xFF
-
-        if key == ord('q'):
-            logging.info("User requested to quit.")
-            break
         
-        if key in GESTURE_MAP:
-            folder_name = GESTURE_MAP[key]
+        save_class = None
+        if key == ord('f'):
+            save_class = 'fist'
+        elif key == ord('p'):
+            save_class = 'palm'
+        elif key == ord('t'):
+            save_class = 'thumbs_up'
+        elif key == ord('n'):
+            save_class = 'none'
+        elif key == ord('q'):
+            break
             
-            # Process image for saving
-            # Resize
-            try:
-                resized_frame = cv2.resize(frame, (IMG_SIZE, IMG_SIZE))
-                # Grayscale
-                gray_frame = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2GRAY)
-                
-                # Generate filename
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                filename = f"{folder_name}_{timestamp}.jpg"
-                save_path = os.path.join("dataset", folder_name, filename)
-                
-                # Save
-                cv2.imwrite(save_path, gray_frame)
-                
-                log_msg = f"Saved {filename} to {folder_name}"
-                logging.info(log_msg)
-                print(log_msg)
-                
-            except Exception as e:
-                logging.error(f"Error processing/saving image: {e}")
-                print(f"Error: {e}")
+        if save_class:
+            # Process image: Resize -> Grayscale
+            resized = cv2.resize(frame, (IMG_SIZE, IMG_SIZE))
+            gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
+            
+            # Save
+            count = counts[save_class]
+            filename = f"{os.path.join(DATA_DIR, save_class, str(count))}.jpg"
+            cv2.imwrite(filename, gray)
+            print(f"Saved {filename}")
 
     cap.release()
     cv2.destroyAllWindows()
-    logging.info("Data collection session ended.")
 
 if __name__ == "__main__":
-    collect_data()
+    main()

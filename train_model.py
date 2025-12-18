@@ -4,64 +4,55 @@ import os
 import logging
 
 # Configure logging
-logging.basicConfig(
-    filename='training.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 # Constants
-IMG_SIZE = 224
+DATA_DIR = 'data'
+IMG_SIZE = 128
 BATCH_SIZE = 32
-EPOCHS = 20
-DATA_DIR = 'dataset'
-MODEL_PATH = 'gesture_model.h5'
+EPOCHS = 10
+MODEL_PATH = 'hand_gesture.h5'
 
 def create_model(num_classes):
     """
-    Creates a lightweight CNN model with < 1M parameters.
-    Architecture: Conv blocks -> GlobalAveragePooling -> Dense
+    Simple Lightweight CNN.
+    Input: (128, 128, 1)
+    Layers: 3 Conv + MaxPool -> Flatten -> Dense -> Output
     """
     model = models.Sequential([
-        # Input layer - 224x224x1 (Grayscale)
         layers.Input(shape=(IMG_SIZE, IMG_SIZE, 1)),
         
-        # First Conv Block
-        layers.Conv2D(32, (3, 3), activation='relu', padding='same'),
+        # 1st Conv Block
+        layers.Conv2D(32, (3, 3), activation='relu'),
         layers.MaxPooling2D((2, 2)),
         
-        # Second Conv Block
-        layers.Conv2D(64, (3, 3), activation='relu', padding='same'),
+        # 2nd Conv Block
+        layers.Conv2D(64, (3, 3), activation='relu'),
         layers.MaxPooling2D((2, 2)),
         
-        # Third Conv Block
-        layers.Conv2D(128, (3, 3), activation='relu', padding='same'),
+        # 3rd Conv Block
+        layers.Conv2D(128, (3, 3), activation='relu'),
         layers.MaxPooling2D((2, 2)),
         
-        # Fourth Conv Block (Optional, but helps learn features)
-        layers.Conv2D(128, (3, 3), activation='relu', padding='same'),
-        layers.MaxPooling2D((2, 2)),
-        
-        # Global Average Pooling to drastically reduce parameters
-        layers.GlobalAveragePooling2D(),
-        
-        # Dense Layers
+        # Flatten & Dense
+        layers.Flatten(),
         layers.Dense(128, activation='relu'),
-        layers.Dropout(0.5),  # Prevent overfitting
+        layers.Dropout(0.5),
         
-        # Output Layer
+        # Output
         layers.Dense(num_classes, activation='softmax')
     ])
-    
     return model
 
-def load_data():
-    """Loads images from the dataset directory."""
-    try:
-        if not os.path.exists(DATA_DIR):
-            raise FileNotFoundError(f"Dataset directory '{DATA_DIR}' not found. Please run collect_data.py first.")
+def main():
+    if not os.path.exists(DATA_DIR):
+        print(f"Error: Directory '{DATA_DIR}' not found.")
+        return
 
-        # Load training dataset
+    print("Loading dataset...")
+    # Load data from 'data' folder
+    # We use validation_split to create train/val sets
+    try:
         train_ds = tf.keras.utils.image_dataset_from_directory(
             DATA_DIR,
             validation_split=0.2,
@@ -69,11 +60,10 @@ def load_data():
             seed=123,
             image_size=(IMG_SIZE, IMG_SIZE),
             batch_size=BATCH_SIZE,
-            color_mode='grayscale', # Important since we saved as grayscale
+            color_mode='grayscale',
             label_mode='int'
         )
 
-        # Load validation dataset
         val_ds = tf.keras.utils.image_dataset_from_directory(
             DATA_DIR,
             validation_split=0.2,
@@ -85,72 +75,50 @@ def load_data():
             label_mode='int'
         )
         
-        # Print class names
         class_names = train_ds.class_names
-        print(f"Classes found: {class_names}")
-        logging.info(f"Classes found: {class_names}")
-
-        # Optimization: cache and prefetch
-        AUTOTUNE = tf.data.AUTOTUNE
-        train_ds = train_ds.cache().shuffle(1000).prefetch(buffer_size=AUTOTUNE)
-        val_ds = val_ds.cache().prefetch(buffer_size=AUTOTUNE)
-
-        return train_ds, val_ds, len(class_names)
+        num_classes = len(class_names)
+        print(f"Classes found ({num_classes}): {class_names}")
         
-    except Exception as e:
-        logging.error(f"Error loading data: {e}")
+    except ValueError as e:
         print(f"Error loading data: {e}")
-        return None, None, 0
-
-def main():
-    print("Loading data...")
-    train_ds, val_ds, num_classes = load_data()
-    
-    if train_ds is None or num_classes == 0:
-        print("Could not load data. Exiting.")
+        print("Make sure 'data' folder contains subfolders with images.")
         return
 
-    print("Creating model...")
+    # Optimization
+    AUTOTUNE = tf.data.AUTOTUNE
+    train_ds = train_ds.cache().shuffle(1000).prefetch(buffer_size=AUTOTUNE)
+    val_ds = val_ds.cache().prefetch(buffer_size=AUTOTUNE)
+
+    # Build Model
     model = create_model(num_classes)
-    
-    # Print model summary and usage
     model.summary()
-    
-    # Check parameter count
+
+    # Check params
     total_params = model.count_params()
     print(f"Total Parameters: {total_params}")
-    logging.info(f"Model created with {total_params} parameters.")
-    
-    if total_params > 1000000:
-        print("WARNING: Model exceeds 1M parameters!")
-        logging.warning("Model exceeds 1M parameters!")
+    if total_params < 1000000:
+        print("Check: Model is under 1 Million parameters.")
     else:
-        print("Model is lightweight (< 1M parameters).")
+        print("Warning: Model exceeds 1 Million parameters.")
 
-    print("Compiling model...")
+    # Compile
     model.compile(
         optimizer='adam',
         loss='sparse_categorical_crossentropy',
         metrics=['accuracy']
     )
 
+    # Train
     print(f"Starting training for {EPOCHS} epochs...")
-    try:
-        history = model.fit(
-            train_ds,
-            validation_data=val_ds,
-            epochs=EPOCHS
-        )
-        logging.info("Training completed successfully.")
-        
-        print("Saving model...")
-        model.save(MODEL_PATH)
-        print(f"Model saved to {MODEL_PATH}")
-        logging.info(f"Model saved to {MODEL_PATH}")
-        
-    except Exception as e:
-        logging.error(f"Error during training: {e}")
-        print(f"Error during training: {e}")
+    history = model.fit(
+        train_ds,
+        validation_data=val_ds,
+        epochs=EPOCHS
+    )
+
+    # Save
+    model.save(MODEL_PATH)
+    print(f"Model saved to {MODEL_PATH}")
 
 if __name__ == "__main__":
     main()
