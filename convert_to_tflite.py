@@ -1,15 +1,17 @@
 import tensorflow as tf
 import os
 
-# 1. Load the heavy Keras model
-model_path = 'hand_gesture.h5'
+# 1. Load the model
+model_path = 'hand_gesture.keras'
 print(f"Loading {model_path}...")
+
 model = tf.keras.models.load_model(model_path)
 
 # 2. Convert to TFLite
+print("Converting to TFLite...")
 converter = tf.lite.TFLiteConverter.from_keras_model(model)
 
-# Optimization (Quantization) - Isse size aur kam hoga
+# Optimization (Quantization)
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
 
 tflite_model = converter.convert()
@@ -22,10 +24,9 @@ with open(tflite_path, 'wb') as f:
 print("------------------------------------------------")
 print(f"Success! Model saved as '{tflite_path}'")
 
-# Check Size
-h5_size = os.path.getsize(model_path) / (1024 * 1024)
+keras_size = os.path.getsize(model_path) / (1024 * 1024)
 tflite_size = os.path.getsize(tflite_path) / (1024 * 1024)
 
-print(f"Original Size: {h5_size:.2f} MB")
-print(f"TFLite Size:   {tflite_size:.2f} MB")
+print(f"Keras Size:  {keras_size:.2f} MB")
+print(f"TFLite Size: {tflite_size:.2f} MB")
 print("------------------------------------------------")

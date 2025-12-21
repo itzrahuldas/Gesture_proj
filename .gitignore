@@ -1,0 +1,6 @@
+__pycache__/
+*.h5
+*.tflite
+*.keras
+data/
+training.log
