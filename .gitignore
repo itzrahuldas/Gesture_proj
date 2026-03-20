@@ -1,6 +1,11 @@
+node_modules/
 __pycache__/
-*.h5
-*.tflite
-*.keras
+*.pyc
+.env
+.venv/
+dist/
+build/
 data/
-training.log
+dataset/
+*.mp4
+*.avi
